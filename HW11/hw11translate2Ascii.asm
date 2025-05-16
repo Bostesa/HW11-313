@@ -9,20 +9,25 @@ section .bss
 section .text
     global _start
 
-; Convert a value 0-15 to its ASCII hex representation ('0'-'9', 'A'-'F')
+; Subroutine: Convert hex digit (0-15) to ASCII representation
+; Input: Single hex digit value on stack
+; Output: ASCII character in AL register
 hex_to_ascii:
     push ebp
     mov ebp, esp
-    mov eax, [ebp+8]    ; Get the parameter (value to convert)
+    mov eax, [ebp+8]    
     
-    cmp al, 10          ; Check if value is 0-9 or A-F
-    jl .digit           ; If less than 10, it's a digit
+    ; Branch based on numerical range for correct ASCII conversion
+    cmp al, 10          
+    jl .digit           
     
-    add al, 'A' - 10    ; Convert 10-15 to 'A'-'F'
+    ; Convert A-F range using ASCII offset
+    add al, 'A' - 10    
     jmp .done
     
 .digit:
-    add al, '0'         ; Convert 0-9 to '0'-'9'
+    ; Convert 0-9 range using ASCII offset
+    add al, '0'         
     
 .done:
     mov esp, ebp
@@ -30,59 +35,60 @@ hex_to_ascii:
     ret
 
 _start:
-    mov esi, inputBuf      ; Source index points to input buffer
-    mov edi, outputBuf     ; Destination index points to output buffer
-    mov ecx, inputLen      ; Counter for number of bytes to process
+    ; Initialize registers for buffer processing
+    mov esi, inputBuf     
+    mov edi, outputBuf    
+    mov ecx, inputLen      
     
 .process_byte:
-    movzx eax, byte [esi]  ; Get current byte from input buffer
+    ; Load next byte from input buffer for translation
+    movzx eax, byte [esi]  
     
-    ; Process high nibble (first hex digit)
-    mov ebx, eax           ; Copy the byte
-    shr ebx, 4             ; Shift right to get high 4 bits
+    ; Extract and translate high nibble (first hex digit)
+    mov ebx, eax          
+    shr ebx, 4            ; Isolate upper 4 bits for first hex character
     
-    ; Call our conversion function
+    ; Convert high nibble to ASCII and store
     push ebx
     call hex_to_ascii
-    add esp, 4             ; Clean up stack
+    add esp, 4            
+    mov [edi], al         ; Store first hex character in output
+    inc edi               
     
-    mov [edi], al          ; Store the ASCII character
-    inc edi                ; Move to next position in output
+    ; Extract and translate low nibble (second hex digit)
+    mov ebx, eax          
+    and ebx, 0x0F         ; Isolate lower 4 bits for second hex character
     
-    ; Process low nibble (second hex digit)
-    mov ebx, eax           ; Copy the original byte again
-    and ebx, 0x0F          ; Mask to get low 4 bits
-    
-    ; Call our conversion function
+    ; Convert low nibble to ASCII and store
     push ebx
     call hex_to_ascii
-    add esp, 4             ; Clean up stack
+    add esp, 4            
+    mov [edi], al         ; Store second hex character in output
+    inc edi               
     
-    mov [edi], al          ; Store the ASCII character
-    inc edi                ; Move to next position in output
+    ; Format output with space delimiter between byte values
+    mov byte [edi], ' '   
+    inc edi               
     
-    ; Add a space after each byte (except the last one)
-    mov byte [edi], ' '    ; Add space
-    inc edi                ; Move to next position
+    ; Advance to next byte and continue if more bytes remain
+    inc esi               
+    dec ecx               
+    jnz .process_byte     
     
-    inc esi                ; Move to next input byte
-    dec ecx                ; Decrement counter
-    jnz .process_byte      ; If not zero, process next byte
+    ; Format final output with proper line termination
+    dec edi                
+    mov byte [edi], 0x0A  ; Replace final space with newline
     
-    ; Replace the last space with a newline
-    dec edi                ; Move back to the last space
-    mov byte [edi], 0x0A   ; Replace with newline character
+    ; Calculate exact output length for system call
+    mov eax, 4            
+    mov ebx, 1            
+    mov ecx, outputBuf    
+    mov edx, edi          
+    sub edx, outputBuf    
+    inc edx               ; Adjust length to include newline
+    int 0x80              
     
-    ; Print the output buffer
-    mov eax, 4             ; sys_write system call
-    mov ebx, 1             ; file descriptor 1 (stdout)
-    mov ecx, outputBuf     ; pointer to output buffer
-    mov edx, edi           ; length to write (edi now points to end)
-    sub edx, outputBuf     ; Calculate length (end - start + 1)
-    inc edx                ; Include the newline character
-    int 0x80               ; make system call
-    
-    ; Exit program
-    mov eax, 1             ; sys_exit system call
-    xor ebx, ebx           ; exit code 0
-    int 0x80               ; make system call
+    ; Clean exit
+    mov eax, 1            
+    xor ebx, ebx          
+    int 0x80
